@@ -1,12 +1,10 @@
 {
   "name": "inventory_management_system_backend",
   "version": "1.0.0",
-  "proxy": "http://localhost:3001",
   "description": "Inventory Management System Backend",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "server": "nodemon index.js"
+    "server": "nodemon index.js"
   },
   "author": "",
   "license": "ISC",

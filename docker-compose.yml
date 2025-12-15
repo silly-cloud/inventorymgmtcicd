@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  mongodb:
+    image: mongo:6
+    container_name: mongodb
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"   # optional, for local debugging
+
+  backend:
+    build: ./Backend
+    container_name: finalback
+    ports:
+      - "3030:3001"
+    environment:
+      MONGO_URI: mongodb://mongodb:27017/IMS
+    depends_on:
+      - mongodb
+
+  frontend:
+    build: ./Frontend/inventory_management_system
+    container_name: inventoryfront
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  mongo_data:
+
