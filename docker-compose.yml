@@ -4,16 +4,18 @@ services:
   mongodb:
     image: mongo:6
     container_name: mongodb
+    restart: unless-stopped
     volumes:
       - mongo_data:/data/db
     ports:
-      - "27017:27017"   # optional, for local debugging
+      - "27017:27017"
 
   backend:
     build: ./Backend
-    container_name: finalback
+    container_name: backend
+    restart: unless-stopped
     ports:
-      - "3030:3001"
+      - "3001:3001"
     environment:
       MONGO_URI: mongodb://mongodb:27017/IMS
     depends_on:
@@ -21,12 +23,12 @@ services:
 
   frontend:
     build: ./Frontend/inventory_management_system
-    container_name: inventoryfront
+    container_name: frontend
+    restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "80:80"
     depends_on:
       - backend
 
 volumes:
   mongo_data:
-
