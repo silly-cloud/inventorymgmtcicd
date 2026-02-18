@@ -11,7 +11,7 @@ export default function Products() {
 
     const getProducts = async () => {
         try {
-            const res = await fetch("/products");
+            const res = await fetch("/api/products");
 
             const data = await res.json();
 
@@ -27,7 +27,7 @@ export default function Products() {
 
     const deleteProduct = async (id) => {
         try {
-            const response = await fetch(`/deleteproduct/${id}`, {
+            const response = await fetch(`/api/deleteproduct/${id}`, {
                 method: "DELETE"
             });
 
