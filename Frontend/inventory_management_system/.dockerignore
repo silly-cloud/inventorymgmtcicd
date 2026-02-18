@@ -3,4 +3,6 @@ build
 .git
 .gitignore
 Dockerfile
-
+.dockerignore
+.env
+README.md
