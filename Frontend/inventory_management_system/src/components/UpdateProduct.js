@@ -22,7 +22,7 @@ export default function InsertProduct() {
     useEffect(() => {
         const getProduct = async () => {
             try {
-                const res = await fetch(`/products/${id}`);
+                const res = await fetch(`/api/products/${id}`);
 
                 const data = await res.json();
 
@@ -53,7 +53,7 @@ export default function InsertProduct() {
         setError("");
 
         try {
-            const response = await fetch(`/updateproduct/${id}`, {
+            const response = await fetch(`/api/updateproduct/${id}`, {
                 method: "PUT",
                 headers: {
                     "Content-Type": "application/json"
