@@ -23,6 +23,7 @@ router.post("/insertproduct", async (req, res) => {
     }
     catch (err) {
         console.log(err)
+         res.status(500).json({ message: 'Internal server error' }); 
     }
 })
 
@@ -36,6 +37,7 @@ router.get('/products', async (req, res) => {
     }
     catch (err) {
         console.log(err);
+         res.status(500).json({ message: 'Internal server error' }); 
     }
 })
 
@@ -49,6 +51,7 @@ router.get('/products/:id', async (req, res) => {
     }
     catch (err) {
         console.log(err);
+         res.status(500).json({ message: 'Internal server error' }); 
     }
 })
 
@@ -63,6 +66,7 @@ router.put('/updateproduct/:id', async (req, res) => {
     }
     catch (err) {
         console.log(err);
+         res.status(500).json({ message: 'Internal server error' }); 
     }
 })
 
@@ -76,6 +80,7 @@ router.delete('/deleteproduct/:id', async (req, res) => {
     }
     catch (err) {
         console.log(err);
+         res.status(500).json({ message: 'Internal server error' }); 
     }
 })
 
