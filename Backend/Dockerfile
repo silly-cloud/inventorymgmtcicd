@@ -24,4 +24,4 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://localhost:3001/products || exit 1
 
-CMD ["node", "index.js"]
+CMD ["node", "server.js"]
