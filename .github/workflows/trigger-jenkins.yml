@@ -1,0 +1,104 @@
+name: "🔨 Trigger Jenkins"
+
+on:
+  workflow_run:
+    workflows:
+      - "🛡️ Security SCA"
+    types:
+      - completed
+
+# Do NOT cancel in-progress — let Jenkins builds finish
+concurrency:
+  group: trigger-jenkins-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Gate – Security Must Pass on main/release
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+      branch: ${{ steps.check.outputs.branch }}
+    steps:
+      - name: Validate branch and upstream result
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run    = context.payload.workflow_run;
+            const branch = run.head_branch || '';
+            const conclusion = run.conclusion;
+
+            console.log(`Branch: ${branch}`);
+            console.log(`Security SCA conclusion: ${conclusion}`);
+
+            const onTargetBranch = branch === 'main' || branch.startsWith('release/');
+            const passed         = conclusion === 'success';
+            const proceed        = onTargetBranch && passed;
+
+            core.setOutput('proceed', proceed ? 'true' : 'false');
+            core.setOutput('branch',  branch);
+
+            if (!onTargetBranch) {
+              core.info(`Skipping Jenkins trigger: branch '${branch}' is not main or release/*`);
+            }
+            if (!passed) {
+              core.warning(`Skipping Jenkins trigger: Security SCA conclusion was '${conclusion}'`);
+            }
+
+  trigger-jenkins:
+    name: Trigger Jenkins Build
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    env:
+      JENKINS_URL: ${{ secrets.JENKINS_URL }}
+      JENKINS_USER: ${{ secrets.JENKINS_USER }}
+      JENKINS_API_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
+      JOB_NAME: "mern-inventory-deploy"
+      GIT_COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
+      BRANCH_NAME: ${{ needs.gate.outputs.branch }}
+      BUILD_NUMBER: ${{ github.run_number }}
+      ARTIFACT_VERSION: "1.0.${{ github.run_number }}"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Trigger Jenkins and wait for result
+        id: jenkins
+        run: bash scripts/trigger-jenkins.sh
+
+      - name: Read Jenkins build URL
+        if: always()
+        id: build-url
+        run: |
+          if [[ -f /tmp/jenkins_build_url ]]; then
+            echo "url=$(cat /tmp/jenkins_build_url)" >> "$GITHUB_OUTPUT"
+          else
+            echo "url=unknown" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write job summary
+        if: always()
+        run: |
+          status="${{ steps.jenkins.outcome }}"
+          url="${{ steps.build-url.outputs.url }}"
+          echo "## 🔨 Jenkins Build" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Status | ${status} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Branch | ${BRANCH_NAME} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Commit | \`${GIT_COMMIT_SHA:0:7}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Artifact Version | ${ARTIFACT_VERSION} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Build URL | ${url} |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: ./.github/workflows/notify-slack.yml
+        with:
+          status: "failure"
+          stage: "🔨 Jenkins Trigger" 
+        secrets:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

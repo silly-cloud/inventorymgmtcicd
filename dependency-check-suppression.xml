@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+
+    <!--
+    ============================================================
+    OWASP Dependency-Check False Positive Suppression File
+    ============================================================
+
+    How to add a suppression:
+
+    Option A: Suppress by packageUrl + specific CVE
+    ────────────────────────────────────────────────
+    Use this when a specific CVE is a false positive for a
+    particular package version.
+
+    <suppress>
+        <notes>
+            CVE-XXXX-XXXXX is a false positive for this package.
+            Reason: [explain why it doesn't apply, e.g. the vulnerable
+            code path is not used, or the fix was backported]
+            Reviewed by: [name] on [date]
+        </notes>
+        <packageUrl regex="false">pkg:npm/package-name@1.2.3</packageUrl>
+        <cve>CVE-XXXX-XXXXX</cve>
+    </suppress>
+
+
+    Option B: Suppress by vulnerabilityName regex
+    ──────────────────────────────────────────────
+    Use this for NVD entries identified by name/pattern rather
+    than a specific CVE (e.g. advisory IDs, GHSA IDs).
+
+    <suppress>
+        <notes>
+            False positive — GHSA-XXXX is not applicable because [reason].
+            Reviewed by: [name] on [date]
+        </notes>
+        <packageUrl regex="true">^pkg:npm/some-package@.*$</packageUrl>
+        <vulnerabilityName regex="true">.*GHSA-xxxx-yyyy-zzzz.*</vulnerabilityName>
+    </suppress>
+
+
+    ============================================================
+    Example: semver ReDoS (CVE-2022-25883)
+    ============================================================
+    The semver package had a ReDoS vulnerability in versions < 7.5.2.
+    If your dependency tree pulls in an affected version indirectly
+    and you have verified the code path is not reachable in your
+    application, you could suppress it like this:
+
+    <suppress>
+        <notes>
+            CVE-2022-25883: ReDoS in semver package.
+            Our application does not pass untrusted user input to
+            semver.validRange() or similar methods, so this is not
+            exploitable in our context.
+            Dependency is pulled in by react-scripts build tooling only
+            (not included in production bundle).
+            Reviewed by: security-team on 2024-01-01.
+            Track upgrade at: https://github.com/npm/node-semver/releases
+        </notes>
+        <packageUrl regex="true">^pkg:npm/semver@[67]\..*$</packageUrl>
+        <cve>CVE-2022-25883</cve>
+    </suppress>
+
+    ============================================================
+    Add active suppressions below this line
+    ============================================================
+    -->
+
+</suppressions>

@@ -1,0 +1,279 @@
+name: "🧪 Test"
+
+on:
+  push:
+    branches:
+      - main
+      - "release/**"
+  pull_request:
+    branches:
+      - main
+      - "release/**"
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  COVERAGE_THRESHOLD: "80"
+
+jobs:
+  paths-filter:
+    name: Detect Changed Paths
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Filter paths
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'Backend/**'
+            frontend:
+              - 'Frontend/inventory_management_system/**'
+
+  test-backend:
+    name: Test Backend
+    needs: paths-filter
+    if: needs.paths-filter.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: Backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: |
+          npx jest --coverage --forceExit --detectOpenHandles --verbose \
+            --coverageReporters=text-summary --coverageReporters=json-summary --coverageReporters=lcov
+
+      - name: Enforce coverage threshold
+        run: |
+          threshold="${COVERAGE_THRESHOLD:-80}"
+          summary="coverage/coverage-summary.json"
+          if [[ ! -f "$summary" ]]; then
+            echo "Coverage summary not found, skipping threshold check."
+            exit 0
+          fi
+          pct=$(python3 -c "
+          import json, sys
+          data = json.load(open('$summary'))
+          lines = data['total']['lines']['pct']
+          print(lines)
+          ")
+          echo "Line coverage: ${pct}%  (threshold: ${threshold}%)"
+          python3 -c "
+          import sys
+          pct = float('$pct')
+          threshold = float('$threshold')
+          if pct < threshold:
+              print(f'FAIL: {pct}% < {threshold}%')
+              sys.exit(1)
+          print(f'PASS: {pct}% >= {threshold}%')
+          "
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: Backend/coverage/
+          if-no-files-found: ignore
+
+  test-frontend:
+    name: Test Frontend
+    needs: paths-filter
+    if: needs.paths-filter.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Frontend/inventory_management_system
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: Frontend/inventory_management_system/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        env:
+          CI: "true"
+        run: |
+          npx react-scripts test --coverage --watchAll=false --verbose \
+            --coverageReporters=text-summary --coverageReporters=json-summary --coverageReporters=lcov
+
+      - name: Enforce coverage threshold
+        run: |
+          threshold="${COVERAGE_THRESHOLD:-80}"
+          summary="coverage/coverage-summary.json"
+          if [[ ! -f "$summary" ]]; then
+            echo "Coverage summary not found, skipping threshold check."
+            exit 0
+          fi
+          pct=$(python3 -c "
+          import json, sys
+          data = json.load(open('$summary'))
+          lines = data['total']['lines']['pct']
+          print(lines)
+          ")
+          echo "Line coverage: ${pct}%  (threshold: ${threshold}%)"
+          python3 -c "
+          import sys
+          pct = float('$pct')
+          threshold = float('$threshold')
+          if pct < threshold:
+              print(f'FAIL: {pct}% < {threshold}%')
+              sys.exit(1)
+          print(f'PASS: {pct}% >= {threshold}%')
+          "
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: Frontend/inventory_management_system/coverage/
+          if-no-files-found: ignore
+
+  pr-coverage-comment:
+    name: PR Coverage Comment
+    needs: [test-backend, test-frontend]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Download backend coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend-coverage
+        continue-on-error: true
+
+      - name: Download frontend coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend-coverage
+        continue-on-error: true
+
+      - name: Post coverage comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            function parseSummary(path) {
+              try {
+                const data = JSON.parse(fs.readFileSync(path, 'utf8'));
+                const t = data.total;
+                return {
+                  lines: t.lines.pct,
+                  statements: t.statements.pct,
+                  functions: t.functions.pct,
+                  branches: t.branches.pct,
+                };
+              } catch {
+                return null;
+              }
+            }
+
+            function coverageRow(label, cov) {
+              if (!cov) return `| ${label} | _not available_ | – | – | – |`;
+              return `| ${label} | ${cov.lines}% | ${cov.statements}% | ${cov.functions}% | ${cov.branches}% |`;
+            }
+
+            const backend  = parseSummary('backend-coverage/coverage-summary.json');
+            const frontend = parseSummary('frontend-coverage/coverage-summary.json');
+
+            const body = [
+              '## 📊 Coverage Report',
+              '',
+              '| Module | Lines | Statements | Functions | Branches |',
+              '|--------|-------|------------|-----------|----------|',
+              coverageRow('Backend',  backend),
+              coverageRow('Frontend', frontend),
+              '',
+              `_Threshold: ${process.env.COVERAGE_THRESHOLD || 80}% lines_`,
+              `_Run: [${context.runNumber}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})_`,
+            ].join('\n');
+
+            const marker = '<!-- coverage-report -->';
+            const fullBody = `${marker}\n${body}`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c => c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner:      context.repo.owner,
+                repo:       context.repo.repo,
+                comment_id: existing.id,
+                body:       fullBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner:       context.repo.owner,
+                repo:        context.repo.repo,
+                issue_number: context.issue.number,
+                body:        fullBody,
+              });
+            }
+
+  test-status:
+    name: Test Status
+    needs: [paths-filter, test-backend, test-frontend]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check test results
+        run: |
+          backend_needed="${{ needs.paths-filter.outputs.backend }}"
+          frontend_needed="${{ needs.paths-filter.outputs.frontend }}"
+          backend_result="${{ needs.test-backend.result }}"
+          frontend_result="${{ needs.test-frontend.result }}"
+
+          failed=false
+
+          if [[ "$backend_needed" == "true" && "$backend_result" == "failure" ]]; then
+            echo "Backend tests FAILED"
+            failed=true
+          fi
+
+          if [[ "$frontend_needed" == "true" && "$frontend_result" == "failure" ]]; then
+            echo "Frontend tests FAILED"
+            failed=true
+          fi
+
+          if [[ "$failed" == "true" ]]; then
+            exit 1
+          fi
+
+          echo "All required test checks passed."

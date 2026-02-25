@@ -1,0 +1,136 @@
+name: "🔍 Lint"
+
+on:
+  push:
+    branches:
+      - main
+      - "release/**"
+  pull_request:
+    branches:
+      - main
+      - "release/**"
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  paths-filter:
+    name: Detect Changed Paths
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Filter paths
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'Backend/**'
+            frontend:
+              - 'Frontend/inventory_management_system/**'
+
+  lint-backend:
+    name: Lint Backend
+    needs: paths-filter
+    if: needs.paths-filter.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: Backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: |
+          npx eslint . --format stylish --max-warnings -1 \
+            --output-file ../lint-backend-report.txt || true
+          npx eslint . --format stylish --max-warnings -1
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-backend-report
+          path: lint-backend-report.txt
+          if-no-files-found: ignore
+
+  lint-frontend:
+    name: Lint Frontend
+    needs: paths-filter
+    if: needs.paths-filter.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Frontend/inventory_management_system
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: Frontend/inventory_management_system/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: |
+          npx eslint src/ --format stylish --max-warnings -1 \
+            --output-file ../../lint-frontend-report.txt || true
+          npx eslint src/ --format stylish --max-warnings -1
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-frontend-report
+          path: lint-frontend-report.txt
+          if-no-files-found: ignore
+
+  lint-status:
+    name: Lint Status
+    needs: [paths-filter, lint-backend, lint-frontend]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check lint results
+        run: |
+          backend_needed="${{ needs.paths-filter.outputs.backend }}"
+          frontend_needed="${{ needs.paths-filter.outputs.frontend }}"
+          backend_result="${{ needs.lint-backend.result }}"
+          frontend_result="${{ needs.lint-frontend.result }}"
+
+          failed=false
+
+          if [[ "$backend_needed" == "true" && "$backend_result" == "failure" ]]; then
+            echo "Backend lint FAILED"
+            failed=true
+          fi
+
+          if [[ "$frontend_needed" == "true" && "$frontend_result" == "failure" ]]; then
+            echo "Frontend lint FAILED"
+            failed=true
+          fi
+
+          if [[ "$failed" == "true" ]]; then
+            exit 1
+          fi
+
+          echo "All required lint checks passed."

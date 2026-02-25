@@ -1,0 +1,180 @@
+name: "🛡️ Security SCA"
+
+on:
+  workflow_run:
+    workflows:
+      - "🔍 Lint"
+      - "🧪 Test"
+    types:
+      - completed
+    branches:
+      - main
+      - "release/**"
+
+env:
+  CVSS_THRESHOLD: "7"
+  DC_VERSION: "11.1.1"
+
+jobs:
+  gate:
+    name: Gate – Both Lint and Test Must Pass
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - name: Check upstream workflow results
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const sha = context.payload.workflow_run.head_sha;
+
+            async function getConclusion(workflowName) {
+              const runs = await github.rest.actions.listWorkflowRunsForRepo({
+                owner,
+                repo,
+                head_sha: sha,
+                per_page: 20,
+              });
+              const run = runs.data.workflow_runs.find(r => r.name === workflowName);
+              return run ? run.conclusion : null;
+            }
+
+            const lintResult = await getConclusion('🔍 Lint');
+            const testResult = await getConclusion('🧪 Test');
+
+            console.log(`Lint conclusion: ${lintResult}`);
+            console.log(`Test conclusion: ${testResult}`);
+
+            const proceed = lintResult === 'success' && testResult === 'success';
+            core.setOutput('proceed', proceed ? 'true' : 'false');
+
+            if (!proceed) {
+              core.warning(`Skipping SCA: Lint=${lintResult}, Test=${testResult}`);
+            }
+
+  dependency-check:
+    name: OWASP Dependency-Check
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Backend dependencies
+        run: npm ci
+        working-directory: Backend
+
+      - name: Install Frontend dependencies
+        run: npm ci
+        working-directory: Frontend/inventory_management_system
+
+      - name: Cache NVD database
+        uses: actions/cache@v4
+        with:
+          path: ~/.dependency-check/data
+          key: nvd-cache-${{ runner.os }}-${{ env.DC_VERSION }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            nvd-cache-${{ runner.os }}-${{ env.DC_VERSION }}-
+            nvd-cache-${{ runner.os }}-
+
+      - name: Download OWASP Dependency-Check CLI
+        run: |
+          DC_ZIP="dependency-check-${DC_VERSION}-release.zip"
+          curl -sSLo "$DC_ZIP" \
+            "https://github.com/jeremylong/DependencyCheck/releases/download/v${DC_VERSION}/${DC_ZIP}"
+          unzip -q "$DC_ZIP"
+          chmod +x dependency-check/bin/dependency-check.sh
+
+      - name: Run Dependency-Check
+        run: |
+          ./dependency-check/bin/dependency-check.sh \
+            --project "mern-inventory" \
+            --scan "Backend/node_modules" \
+            --scan "Frontend/inventory_management_system/node_modules" \
+            --format HTML \
+            --format JSON \
+            --out dependency-check-report \
+            --failOnCVSS "${CVSS_THRESHOLD}" \
+            --suppression dependency-check-suppression.xml \
+            --nvdDatafeedUrl "" \
+            --data ~/.dependency-check/data \
+            --disableAssembly \
+            --disableAutoUpdate false \
+            --log dependency-check-report/dc.log
+        continue-on-error: true
+        id: dc-run
+
+      - name: Parse JSON report and write summary
+        if: always()
+        run: |
+          REPORT="dependency-check-report/dependency-check-report.json"
+          if [[ ! -f "$REPORT" ]]; then
+            echo "Report not found." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          python3 - <<'PYEOF'
+          import json, os, sys
+
+          report_path = "dependency-check-report/dependency-check-report.json"
+          threshold   = float(os.environ.get("CVSS_THRESHOLD", "7"))
+
+          with open(report_path) as f:
+              data = json.load(f)
+
+          deps = data.get("dependencies", [])
+          counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0}
+          above_threshold = []
+
+          for dep in deps:
+              for vuln in dep.get("vulnerabilities", []):
+                  name     = vuln.get("name", "unknown")
+                  severity = vuln.get("severity", "INFO").upper()
+                  cvssv3   = vuln.get("cvssv3", {}).get("baseScore", 0)
+                  cvssv2   = vuln.get("cvssv2", {}).get("score", 0)
+                  score    = cvssv3 or cvssv2
+
+                  counts[severity] = counts.get(severity, 0) + 1
+                  if score >= threshold:
+                      above_threshold.append((name, severity, score, dep.get("fileName", "")))
+
+          summary_path = os.environ["GITHUB_STEP_SUMMARY"]
+          with open(summary_path, "a") as out:
+              out.write("## 🛡️ OWASP Dependency-Check Results\n\n")
+              out.write(f"CVSS threshold: **{threshold}**\n\n")
+              out.write("### Severity Summary\n\n")
+              out.write("| Severity | Count |\n|----------|-------|\n")
+              for sev in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]:
+                  out.write(f"| {sev} | {counts.get(sev, 0)} |\n")
+
+              if above_threshold:
+                  out.write(f"\n### Vulnerabilities at or above threshold ({threshold})\n\n")
+                  out.write("| CVE | Severity | Score | Package |\n|-----|----------|-------|---------|\n")
+                  for name, sev, score, pkg in sorted(above_threshold, key=lambda x: -x[2]):
+                      out.write(f"| {name} | {sev} | {score} | {pkg} |\n")
+              else:
+                  out.write(f"\n✅ No vulnerabilities at or above CVSS {threshold} found.\n")
+          PYEOF
+
+      - name: Upload Dependency-Check reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: dependency-check-report/
+          if-no-files-found: ignore
+
+      - name: Fail if vulnerabilities exceed threshold
+        if: steps.dc-run.outcome == 'failure'
+        run: |
+          echo "Dependency-Check found vulnerabilities above CVSS threshold ${CVSS_THRESHOLD}."
+          exit 1
