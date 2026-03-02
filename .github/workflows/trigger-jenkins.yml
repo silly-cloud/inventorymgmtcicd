@@ -61,7 +61,7 @@ jobs:
       BUILD_NUMBER: ${{ github.run_number }}
       ARTIFACT_VERSION: "1.0.${{ github.run_number }}"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
@@ -94,11 +94,13 @@ jobs:
           echo "| Artifact Version | ${ARTIFACT_VERSION} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Build URL | ${url} |" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Notify Slack on failure
-        if: failure()
-        uses: ./.github/workflows/notify-slack.yml
-        with:
-          status: "failure"
-          stage: "🔨 Jenkins Trigger" 
-        secrets:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+  notify-failure:
+    name: Notify Slack on Failure
+    needs: [gate, trigger-jenkins]
+    if: always() && needs.trigger-jenkins.result == 'failure'
+    uses: ./.github/workflows/notify-slack.yml
+    with:
+      status: "failure"
+      stage: "🔨 Jenkins Trigger"
+    secrets:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
