@@ -1,10 +1,10 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom';
 
 export default function InsertProduct() {
     const [productName, setProductName] = useState("");
-    const [productPrice, setProductPrice] = useState();
-    const [productBarcode, setProductBarcode] = useState();
+    const [productPrice, setProductPrice] = useState("");
+    const [productBarcode, setProductBarcode] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const navigate = useNavigate();
@@ -46,8 +46,8 @@ export default function InsertProduct() {
             if (res.status === 201) {
                 alert("Data Inserted");
                 setProductName("");
-                setProductPrice(0);
-                setProductBarcode(0);
+                setProductPrice("");
+                setProductBarcode("");
                 navigate('/products');
             } else if (res.status === 422) {
                 alert("Product is already added with that barcode.");
