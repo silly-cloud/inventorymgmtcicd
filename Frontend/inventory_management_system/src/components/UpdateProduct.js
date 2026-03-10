@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, useParams, useNavigate } from 'react-router-dom';
 
-export default function InsertProduct() {
+export default function UpdateProduct() {
     const [productName, setProductName] = useState("");
-    const [productPrice, setProductPrice] = useState();
-    const [productBarcode, setProductBarcode] = useState();
+    const [productPrice, setProductPrice] = useState("");
+    const [productBarcode, setProductBarcode] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const navigate = useNavigate();
