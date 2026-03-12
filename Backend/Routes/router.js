@@ -2,6 +2,11 @@ const express = require('express');
 const router = express.Router();
 const products = require('../Models/Products');
 
+// Health check
+router.get('/health', (_req, res) => {
+    res.status(200).json({ status: 'ok' });
+});
+
 //Inserting(Creating) Data:
 router.post("/insertproduct", async (req, res) => {
     const { ProductName, ProductPrice, ProductBarcode } = req.body;
