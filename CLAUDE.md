@@ -12,12 +12,14 @@ MERN stack inventory management system with CRUD operations for products. MongoD
 - `npm run server` — Start dev server with Nodemon (auto-reload)
 - `npm start` — Start production server
 - `npm test` — Run Jest tests with coverage (`--forceExit --detectOpenHandles`)
+- `npx jest --testPathPattern=<pattern> --forceExit` — Run a single test file
 - `npx eslint . --format stylish --max-warnings -1` — Lint (zero warnings allowed)
 
 ### Frontend (run from `Frontend/inventory_management_system/`)
 - `npm start` — React dev server
 - `npm run build` — Production build
-- `npm test` — Jest tests (watch mode); use `CI=true npm test -- --coverage` for single-run with coverage
+- `CI=true npm test -- --coverage` — Single-run with coverage (non-watch)
+- `CI=true npx react-scripts test --testPathPattern=<pattern> --watchAll=false` — Run a single test file
 - `npx eslint src/ --format stylish --max-warnings -1` — Lint
 
 ### Docker (run from project root)
@@ -62,12 +64,13 @@ All success responses use status 201; errors use 422 (conflict) or 500.
 - Jest + Supertest; Products model is fully mocked (no DB required)
 - Tests all 5 route handlers including error cases
 
-### Frontend Tests (`Frontend/.../src/components/__tests__/`)
+### Frontend Tests (`Frontend/inventory_management_system/src/components/__tests__/`)
 - React Testing Library + Jest; fetch is mocked globally
 - Separate test file per component, wrapped in MemoryRouter
 
 ### CI Coverage Threshold
 - Both backend and frontend enforce **80% coverage** in CI (GitHub Actions)
+- CI uses path-based filtering: backend tests only run when `Backend/**` changes, frontend tests only when `Frontend/inventory_management_system/**` changes
 
 ## Linting Rules
 - **Backend:** ESLint flat config (`eslint.config.js`) — `no-unused-vars` (error, ignores `_` prefix), `eqeqeq` (warn), `no-var` (warn), `no-console` off
