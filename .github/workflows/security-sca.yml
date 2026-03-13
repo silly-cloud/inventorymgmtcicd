@@ -60,12 +60,12 @@ jobs:
     if: needs.gate.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
 
@@ -105,10 +105,8 @@ jobs:
             --out dependency-check-report \
             --failOnCVSS "${CVSS_THRESHOLD}" \
             --suppression dependency-check-suppression.xml \
-            --nvdDatafeedUrl "" \
             --data ~/.dependency-check/data \
             --disableAssembly \
-            --disableAutoUpdate false \
             --log dependency-check-report/dc.log
         continue-on-error: true
         id: dc-run
@@ -167,7 +165,7 @@ jobs:
 
       - name: Upload Dependency-Check reports
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
           name: dependency-check-report
           path: dependency-check-report/
