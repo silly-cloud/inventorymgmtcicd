@@ -68,4 +68,132 @@
     ============================================================
     -->
 
+    <!--
+    ============================================================
+    react-scripts@5.0.1 internal build-tool vulnerabilities
+    ============================================================
+    react-scripts 5.0.1 is the final release of Create React App and is
+    effectively EOL. The packages below are internal build-time dependencies
+    locked to specific versions by react-scripts. They are NOT included in
+    the production Docker image — the Nginx container serves only compiled
+    static assets. These suppressions cover the packages that cannot be
+    upgraded without abandoning react-scripts entirely.
+
+    Reviewed: 2026-03-13
+    -->
+
+    <!-- nth-check@2.1.1 — GHSA-rp65-9cf3-cjxr (CVSS 7.5): Inefficient RegExp
+         Used only by svgo during the build step; never runs at runtime. -->
+    <suppress>
+        <notes>
+            nth-check ReDoS (GHSA-rp65-9cf3-cjxr / CVE-2021-3803) — build-time only.
+            Locked by react-scripts@5.0.1. Not deployed to production.
+            Reviewed: 2026-03-13
+        </notes>
+        <packageUrl regex="true">^pkg:npm/nth\-check@.*$</packageUrl>
+        <vulnerabilityName regex="true">.*GHSA-rp65-9cf3-cjxr.*</vulnerabilityName>
+    </suppress>
+    <suppress>
+        <notes>
+            nth-check CVE-2021-3803 — build-time only, locked by react-scripts.
+            Reviewed: 2026-03-13
+        </notes>
+        <packageUrl regex="true">^pkg:npm/nth\-check@.*$</packageUrl>
+        <cve>CVE-2021-3803</cve>
+    </suppress>
+
+    <!-- svgo@1.3.2 — GHSA-xpqw-6gx7-v673 (CVSS 7.5): Billion Laughs DoS via DOCTYPE
+         Only processes SVG files during the build step. Never parses untrusted SVGs at runtime. -->
+    <suppress>
+        <notes>
+            svgo Billion Laughs DoS (GHSA-xpqw-6gx7-v673) — build-time SVG optimiser only.
+            Locked by react-scripts@5.0.1. Not deployed to production.
+            Reviewed: 2026-03-13
+        </notes>
+        <packageUrl regex="true">^pkg:npm/svgo@.*$</packageUrl>
+        <vulnerabilityName regex="true">.*GHSA-xpqw-6gx7-v673.*</vulnerabilityName>
+    </suppress>
+
+    <!-- @svgr/plugin-svgo@5.5.0 and @svgr/webpack@5.5.0 — depends on svgo@1.x
+         Both are webpack loaders that transform SVGs at build time only. -->
+    <suppress>
+        <notes>
+            @svgr/plugin-svgo and @svgr/webpack depend on svgo@1.x (locked by react-scripts).
+            Build-time only; not deployed to production.
+            Reviewed: 2026-03-13
+        </notes>
+        <packageUrl regex="true">^pkg:npm/%40svgr/.*$</packageUrl>
+        <vulnerabilityName regex="true">.*</vulnerabilityName>
+    </suppress>
+
+    <!-- css-select@4.3.0 — depends on nth-check@2.1.1 (locked by react-scripts)
+         Used by html-webpack-plugin during build only. -->
+    <suppress>
+        <notes>
+            css-select depends on nth-check@2.1.1 (locked by react-scripts@5.0.1).
+            Build-time only; not deployed to production.
+            Reviewed: 2026-03-13
+        </notes>
+        <packageUrl regex="true">^pkg:npm/css\-select@.*$</packageUrl>
+        <vulnerabilityName regex="true">.*</vulnerabilityName>
+    </suppress>
+
+    <!-- serialize-javascript@6.0.2 — GHSA-5c6j-r48x-rmvq (CVSS 8.1): RCE via RegExp
+         Used by rollup-plugin-terser and workbox at build time only.
+         Processes only developer-authored source code, not untrusted input. -->
+    <suppress>
+        <notes>
+            serialize-javascript RCE (GHSA-5c6j-r48x-rmvq) — locked by react-scripts@5.0.1.
+            Only serialises developer-authored code at build time; never processes
+            untrusted user input. Not deployed to production.
+            Reviewed: 2026-03-13
+        </notes>
+        <packageUrl regex="true">^pkg:npm/serialize\-javascript@.*$</packageUrl>
+        <vulnerabilityName regex="true">.*GHSA-5c6j-r48x-rmvq.*</vulnerabilityName>
+    </suppress>
+    <suppress>
+        <notes>
+            serialize-javascript XSS (GHSA-76p7-773f-r4q5) — same rationale as above.
+            Reviewed: 2026-03-13
+        </notes>
+        <packageUrl regex="true">^pkg:npm/serialize\-javascript@.*$</packageUrl>
+        <vulnerabilityName regex="true">.*GHSA-76p7-773f-r4q5.*</vulnerabilityName>
+    </suppress>
+
+    <!-- rollup-plugin-terser@7.0.2 — depends on serialize-javascript (locked by react-scripts)
+         Minifier plugin used only during the build step. -->
+    <suppress>
+        <notes>
+            rollup-plugin-terser depends on serialize-javascript@6.x (locked by react-scripts).
+            Build-time minifier only; not deployed to production.
+            Reviewed: 2026-03-13
+        </notes>
+        <packageUrl regex="true">^pkg:npm/rollup\-plugin\-terser@.*$</packageUrl>
+        <vulnerabilityName regex="true">.*</vulnerabilityName>
+    </suppress>
+
+    <!-- css-minimizer-webpack-plugin@3.4.1 — depends on packages locked by react-scripts
+         CSS minification plugin used only during the build step. -->
+    <suppress>
+        <notes>
+            css-minimizer-webpack-plugin uses build-time deps locked by react-scripts@5.0.1.
+            Not deployed to production.
+            Reviewed: 2026-03-13
+        </notes>
+        <packageUrl regex="true">^pkg:npm/css\-minimizer\-webpack\-plugin@.*$</packageUrl>
+        <vulnerabilityName regex="true">.*</vulnerabilityName>
+    </suppress>
+
+    <!-- workbox-build@6.6.0 and workbox-webpack-plugin@6.6.0 — locked by react-scripts
+         PWA caching plugins used only during the build step. -->
+    <suppress>
+        <notes>
+            workbox-build and workbox-webpack-plugin locked to 6.6.0 by react-scripts@5.0.1.
+            Build-time only; not deployed to production.
+            Reviewed: 2026-03-13
+        </notes>
+        <packageUrl regex="true">^pkg:npm/workbox\-.*$</packageUrl>
+        <vulnerabilityName regex="true">.*</vulnerabilityName>
+    </suppress>
+
 </suppressions>

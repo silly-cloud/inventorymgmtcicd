@@ -37,7 +37,8 @@ CRUMB_HEADER=""
 # Fetch Jenkins crumb (CSRF)
 # ---------------------------------------------------------------------------
 log "Fetching Jenkins crumb..."
-CRUMB_RESPONSE=$(curl -s -u "${JENKINS_USER}:${JENKINS_API_TOKEN}" \
+CRUMB_RESPONSE=$(curl -s --connect-timeout 10 --max-time 30 \
+  -u "${JENKINS_USER}:${JENKINS_API_TOKEN}" \
   "${JENKINS_URL}/crumbIssuer/api/json" || true)
 
 CRUMB_FIELD=$(echo "$CRUMB_RESPONSE" | python3 -c "
@@ -85,7 +86,8 @@ QUEUE_URL=""
 for attempt in $(seq 1 $MAX_ATTEMPTS); do
   log "Triggering Jenkins build (attempt ${attempt}/${MAX_ATTEMPTS})..."
 
-  CURL_ARGS=(-s -o /dev/null -w "%{http_code}" -X POST
+  CURL_ARGS=(-s --connect-timeout 10 --max-time 30
+    -o /dev/null -w "%{http_code}" -X POST
     -u "${JENKINS_USER}:${JENKINS_API_TOKEN}"
     --data "${PARAM_STRING}")
 
@@ -131,7 +133,8 @@ BUILD_NUMBER_ASSIGNED=""
 BUILD_URL=""
 
 while [[ $QUEUE_ELAPSED -lt $QUEUE_TIMEOUT ]]; do
-  QUEUE_JSON=$(curl -s -u "${JENKINS_USER}:${JENKINS_API_TOKEN}" \
+  QUEUE_JSON=$(curl -s --connect-timeout 10 --max-time 30 \
+    -u "${JENKINS_USER}:${JENKINS_API_TOKEN}" \
     "${QUEUE_URL}/api/json" || true)
 
   EXECUTABLE=$(echo "$QUEUE_JSON" | python3 -c "
@@ -181,7 +184,8 @@ FINAL_RESULT=""
 STATUS_URL="${BUILD_URL%/}/api/json"
 
 while [[ $STATUS_ELAPSED -lt $STATUS_TIMEOUT ]]; do
-  STATUS_JSON=$(curl -s -u "${JENKINS_USER}:${JENKINS_API_TOKEN}" \
+  STATUS_JSON=$(curl -s --connect-timeout 10 --max-time 30 \
+    -u "${JENKINS_USER}:${JENKINS_API_TOKEN}" \
     "${STATUS_URL}" || true)
 
   BUILDING=$(echo "$STATUS_JSON" | python3 -c "
