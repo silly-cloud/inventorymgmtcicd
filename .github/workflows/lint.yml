@@ -22,10 +22,10 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Filter paths
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -43,10 +43,10 @@ jobs:
       run:
         working-directory: Backend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "20"
           cache: "npm"
@@ -57,13 +57,13 @@ jobs:
 
       - name: Run ESLint
         run: |
-          npx eslint . --format stylish --max-warnings -1 \
+          npx eslint . --format stylish \
             --output-file ../lint-backend-report.txt || true
-          npx eslint . --format stylish --max-warnings -1
+          npx eslint . --format stylish
 
       - name: Upload lint report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: lint-backend-report
           path: lint-backend-report.txt
@@ -78,10 +78,10 @@ jobs:
       run:
         working-directory: Frontend/inventory_management_system
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "20"
           cache: "npm"
@@ -92,13 +92,13 @@ jobs:
 
       - name: Run ESLint
         run: |
-          npx eslint src/ --format stylish --max-warnings -1 \
+          npx eslint src/ --format stylish \
             --output-file ../../lint-frontend-report.txt || true
-          npx eslint src/ --format stylish --max-warnings -1
+          npx eslint src/ --format stylish
 
       - name: Upload lint report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: lint-frontend-report
           path: lint-frontend-report.txt
