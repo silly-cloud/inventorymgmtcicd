@@ -369,6 +369,7 @@ jobs:
 
       - name: Run Dependency-Check
         run: |
+          mkdir -p dependency-check-report
           ./dependency-check/bin/dependency-check.sh \
             --project "mern-inventory" \
             --scan "Backend/node_modules" \
