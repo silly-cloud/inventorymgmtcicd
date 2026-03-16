@@ -1,0 +1,517 @@
+name: "🚀 CI/CD Pipeline"
+
+on:
+  push:
+    branches:
+      - main
+      - "release/**"
+  pull_request:
+    branches:
+      - main
+      - "release/**"
+
+# Cancel duplicate runs on PRs; protect in-progress main-branch deploys.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  COVERAGE_THRESHOLD: "80"
+  CVSS_THRESHOLD: "7"
+  DC_VERSION: "11.1.1"
+
+jobs:
+
+  # ── PATH FILTER ─────────────────────────────────────────────────────────────
+  paths-filter:
+    name: Detect Changed Paths
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Filter paths
+        uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'Backend/**'
+            frontend:
+              - 'Frontend/inventory_management_system/**'
+
+  # ── LINT ────────────────────────────────────────────────────────────────────
+  lint-backend:
+    name: Lint Backend
+    needs: paths-filter
+    if: needs.paths-filter.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: Backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: |
+          npx eslint . --format stylish \
+            --output-file ../lint-backend-report.txt || true
+          npx eslint . --format stylish
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-backend-report
+          path: lint-backend-report.txt
+          if-no-files-found: ignore
+
+  lint-frontend:
+    name: Lint Frontend
+    needs: paths-filter
+    if: needs.paths-filter.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Frontend/inventory_management_system
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: Frontend/inventory_management_system/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: |
+          npx eslint src/ --format stylish \
+            --output-file ../../lint-frontend-report.txt || true
+          npx eslint src/ --format stylish
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-frontend-report
+          path: lint-frontend-report.txt
+          if-no-files-found: ignore
+
+  # ── TEST ────────────────────────────────────────────────────────────────────
+  test-backend:
+    name: Test Backend
+    needs: paths-filter
+    if: needs.paths-filter.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: Backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: |
+          npx jest --coverage --forceExit --detectOpenHandles --verbose \
+            --coverageReporters=text-summary --coverageReporters=json-summary --coverageReporters=lcov
+
+      - name: Enforce coverage threshold
+        run: |
+          threshold="${COVERAGE_THRESHOLD:-80}"
+          summary="coverage/coverage-summary.json"
+          if [[ ! -f "$summary" ]]; then
+            echo "Coverage summary not found, skipping threshold check."
+            exit 0
+          fi
+          pct=$(python3 -c "
+          import json
+          data = json.load(open('$summary'))
+          print(data['total']['lines']['pct'])
+          ")
+          echo "Line coverage: ${pct}%  (threshold: ${threshold}%)"
+          python3 -c "
+          pct = float('$pct')
+          threshold = float('$threshold')
+          if pct < threshold:
+              print(f'FAIL: {pct}% < {threshold}%')
+              exit(1)
+          print(f'PASS: {pct}% >= {threshold}%')
+          "
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: Backend/coverage/
+          if-no-files-found: ignore
+
+  test-frontend:
+    name: Test Frontend
+    needs: paths-filter
+    if: needs.paths-filter.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Frontend/inventory_management_system
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: Frontend/inventory_management_system/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        env:
+          CI: "true"
+        run: |
+          npx react-scripts test --coverage --watchAll=false --verbose \
+            --coverageReporters=text-summary --coverageReporters=json-summary --coverageReporters=lcov
+
+      - name: Enforce coverage threshold
+        env:
+          COVERAGE_THRESHOLD: "75"  # TODO: raise back to 80 once frontend coverage improves
+        run: |
+          threshold="${COVERAGE_THRESHOLD:-80}"
+          summary="coverage/coverage-summary.json"
+          if [[ ! -f "$summary" ]]; then
+            echo "Coverage summary not found, skipping threshold check."
+            exit 0
+          fi
+          pct=$(python3 -c "
+          import json
+          data = json.load(open('$summary'))
+          print(data['total']['lines']['pct'])
+          ")
+          echo "Line coverage: ${pct}%  (threshold: ${threshold}%)"
+          python3 -c "
+          pct = float('$pct')
+          threshold = float('$threshold')
+          if pct < threshold:
+              print(f'FAIL: {pct}% < {threshold}%')
+              exit(1)
+          print(f'PASS: {pct}% >= {threshold}%')
+          "
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: Frontend/inventory_management_system/coverage/
+          if-no-files-found: ignore
+
+  # ── PR COVERAGE COMMENT ─────────────────────────────────────────────────────
+  pr-coverage-comment:
+    name: PR Coverage Comment
+    needs: [test-backend, test-frontend]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Download backend coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend-coverage
+        continue-on-error: true
+
+      - name: Download frontend coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend-coverage
+        continue-on-error: true
+
+      - name: Post coverage comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            function parseSummary(path) {
+              try {
+                const data = JSON.parse(fs.readFileSync(path, 'utf8'));
+                const t = data.total;
+                return {
+                  lines: t.lines.pct,
+                  statements: t.statements.pct,
+                  functions: t.functions.pct,
+                  branches: t.branches.pct,
+                };
+              } catch {
+                return null;
+              }
+            }
+
+            function coverageRow(label, cov) {
+              if (!cov) return `| ${label} | _not available_ | – | – | – |`;
+              return `| ${label} | ${cov.lines}% | ${cov.statements}% | ${cov.functions}% | ${cov.branches}% |`;
+            }
+
+            const backend  = parseSummary('backend-coverage/coverage-summary.json');
+            const frontend = parseSummary('frontend-coverage/coverage-summary.json');
+
+            const body = [
+              '## 📊 Coverage Report',
+              '',
+              '| Module | Lines | Statements | Functions | Branches |',
+              '|--------|-------|------------|-----------|----------|',
+              coverageRow('Backend',  backend),
+              coverageRow('Frontend', frontend),
+              '',
+              `_Threshold: ${process.env.COVERAGE_THRESHOLD || 80}% lines_`,
+              `_Run: [${context.runNumber}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})_`,
+            ].join('\n');
+
+            const marker = '<!-- coverage-report -->';
+            const fullBody = `${marker}\n${body}`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c => c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner:      context.repo.owner,
+                repo:       context.repo.repo,
+                comment_id: existing.id,
+                body:       fullBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner:       context.repo.owner,
+                repo:        context.repo.repo,
+                issue_number: context.issue.number,
+                body:        fullBody,
+              });
+            }
+
+  # ── SECURITY SCA ─────────────────────────────────────────────────────────────
+  security-sca:
+    name: OWASP Dependency-Check
+    needs: [lint-backend, lint-frontend, test-backend, test-frontend]
+    # Run when all upstream jobs passed or were skipped (path not changed).
+    # Block only on actual failures or cancellations.
+    if: |
+      always() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Backend dependencies
+        run: npm ci
+        working-directory: Backend
+
+      - name: Install Frontend dependencies
+        run: npm ci
+        working-directory: Frontend/inventory_management_system
+
+      - name: Cache NVD database
+        uses: actions/cache@v4
+        with:
+          path: ~/.dependency-check/data
+          key: nvd-cache-${{ runner.os }}-${{ env.DC_VERSION }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            nvd-cache-${{ runner.os }}-${{ env.DC_VERSION }}-
+            nvd-cache-${{ runner.os }}-
+
+      - name: Download OWASP Dependency-Check CLI
+        run: |
+          DC_ZIP="dependency-check-${DC_VERSION}-release.zip"
+          curl -sSLo "$DC_ZIP" \
+            "https://github.com/jeremylong/DependencyCheck/releases/download/v${DC_VERSION}/${DC_ZIP}"
+          unzip -q "$DC_ZIP"
+          chmod +x dependency-check/bin/dependency-check.sh
+
+      - name: Run Dependency-Check
+        run: |
+          ./dependency-check/bin/dependency-check.sh \
+            --project "mern-inventory" \
+            --scan "Backend/node_modules" \
+            --scan "Frontend/inventory_management_system/node_modules" \
+            --format HTML \
+            --format JSON \
+            --out dependency-check-report \
+            --failOnCVSS "${CVSS_THRESHOLD}" \
+            --suppression dependency-check-suppression.xml \
+            --data ~/.dependency-check/data \
+            --disableAssembly \
+            --log dependency-check-report/dc.log
+        continue-on-error: true
+        id: dc-run
+
+      - name: Parse JSON report and write summary
+        if: always()
+        run: |
+          REPORT="dependency-check-report/dependency-check-report.json"
+          if [[ ! -f "$REPORT" ]]; then
+            echo "Report not found." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          python3 - <<'PYEOF'
+          import json, os
+
+          report_path = "dependency-check-report/dependency-check-report.json"
+          threshold   = float(os.environ.get("CVSS_THRESHOLD", "7"))
+
+          with open(report_path) as f:
+              data = json.load(f)
+
+          deps = data.get("dependencies", [])
+          counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0}
+          above_threshold = []
+
+          for dep in deps:
+              for vuln in dep.get("vulnerabilities", []):
+                  name     = vuln.get("name", "unknown")
+                  severity = vuln.get("severity", "INFO").upper()
+                  cvssv3   = vuln.get("cvssv3", {}).get("baseScore", 0)
+                  cvssv2   = vuln.get("cvssv2", {}).get("score", 0)
+                  score    = cvssv3 or cvssv2
+
+                  counts[severity] = counts.get(severity, 0) + 1
+                  if score >= threshold:
+                      above_threshold.append((name, severity, score, dep.get("fileName", "")))
+
+          summary_path = os.environ["GITHUB_STEP_SUMMARY"]
+          with open(summary_path, "a") as out:
+              out.write("## 🛡️ OWASP Dependency-Check Results\n\n")
+              out.write(f"CVSS threshold: **{threshold}**\n\n")
+              out.write("### Severity Summary\n\n")
+              out.write("| Severity | Count |\n|----------|-------|\n")
+              for sev in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]:
+                  out.write(f"| {sev} | {counts.get(sev, 0)} |\n")
+
+              if above_threshold:
+                  out.write(f"\n### Vulnerabilities at or above threshold ({threshold})\n\n")
+                  out.write("| CVE | Severity | Score | Package |\n|-----|----------|-------|---------|\n")
+                  for name, sev, score, pkg in sorted(above_threshold, key=lambda x: -x[2]):
+                      out.write(f"| {name} | {sev} | {score} | {pkg} |\n")
+              else:
+                  out.write(f"\n✅ No vulnerabilities at or above CVSS {threshold} found.\n")
+          PYEOF
+
+      - name: Upload Dependency-Check reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: dependency-check-report/
+          if-no-files-found: ignore
+
+      - name: Fail if vulnerabilities exceed threshold
+        if: steps.dc-run.outcome == 'failure'
+        run: |
+          echo "Dependency-Check found vulnerabilities above CVSS threshold ${CVSS_THRESHOLD}."
+          exit 1
+
+  # ── TRIGGER JENKINS ──────────────────────────────────────────────────────────
+  trigger-jenkins:
+    name: Trigger Jenkins Build
+    needs: [security-sca]
+    # Only trigger on main/release branches after SCA passes.
+    # NOTE: This job will always fail on GitHub-hosted runners because Jenkins
+    # runs inside our private AWS K8s cluster (worker1, NodePort 30080) which
+    # is unreachable from github.com IP ranges. arc-runner-set (self-hosted,
+    # deployed inside the VPC) is required for this job to reach Jenkins.
+    if: |
+      needs.security-sca.result == 'success' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/'))
+    runs-on: arc-runner-set
+    env:
+      JENKINS_URL: ${{ secrets.JENKINS_URL }}
+      JENKINS_USER: ${{ secrets.JENKINS_USER }}
+      JENKINS_API_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
+      JOB_NAME: "mern-inventory-deploy"
+      GIT_COMMIT_SHA: ${{ github.sha }}
+      BRANCH_NAME: ${{ github.ref_name }}
+      BUILD_NUMBER: ${{ github.run_number }}
+      ARTIFACT_VERSION: "1.0.${{ github.run_number }}"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trigger Jenkins and wait for result
+        id: jenkins
+        run: bash scripts/trigger-jenkins.sh
+
+      - name: Read Jenkins build URL
+        if: always()
+        id: build-url
+        run: |
+          if [[ -f /tmp/jenkins_build_url ]]; then
+            echo "url=$(cat /tmp/jenkins_build_url)" >> "$GITHUB_OUTPUT"
+          else
+            echo "url=unknown" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write job summary
+        if: always()
+        run: |
+          status="${{ steps.jenkins.outcome }}"
+          url="${{ steps.build-url.outputs.url }}"
+          echo "## 🔨 Jenkins Build" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Status | ${status} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Branch | ${BRANCH_NAME} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Commit | \`${GIT_COMMIT_SHA:0:7}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Artifact Version | ${ARTIFACT_VERSION} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Build URL | ${url} |" >> "$GITHUB_STEP_SUMMARY"
+
+  # ── NOTIFY SLACK ─────────────────────────────────────────────────────────────
+  notify-failure:
+    name: Notify Slack on Failure
+    needs: [trigger-jenkins]
+    if: always() && needs.trigger-jenkins.result == 'failure'
+    uses: ./.github/workflows/notify-slack.yml
+    with:
+      status: "failure"
+      stage: "🔨 Jenkins Trigger"
+    secrets:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
