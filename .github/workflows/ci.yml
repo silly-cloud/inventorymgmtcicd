@@ -10,6 +10,10 @@ on:
       - main
       - "release/**"
 
+permissions:
+  contents: read
+  pull-requests: write    # PR coverage comment
+
 # Cancel duplicate runs on PRs; protect in-progress main-branch deploys.
 concurrency:
   group: ci-${{ github.ref }}
@@ -238,8 +242,6 @@ jobs:
     needs: [test-backend, test-frontend]
     if: always() && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
     steps:
       - name: Download backend coverage
         uses: actions/download-artifact@v4
@@ -516,6 +518,30 @@ jobs:
           echo "| Commit | \`${GIT_COMMIT_SHA:0:7}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Artifact Version | ${ARTIFACT_VERSION} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Build URL | ${url} |" >> "$GITHUB_STEP_SUMMARY"
+
+  # ── CI GATE (branch protection target) ────────────────────────────────────────
+  # This job ALWAYS runs and gives branch protection a single, stable check name
+  # to require. Without it, skipped path-filtered jobs make required checks vanish.
+  ci-status:
+    name: CI Status
+    if: always()
+    needs: [lint-backend, lint-frontend, test-backend, test-frontend, security-sca]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate pipeline result
+        run: |
+          results=("${{ needs.lint-backend.result }}" \
+                   "${{ needs.lint-frontend.result }}" \
+                   "${{ needs.test-backend.result }}" \
+                   "${{ needs.test-frontend.result }}" \
+                   "${{ needs.security-sca.result }}")
+          for r in "${results[@]}"; do
+            if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
+              echo "CI failed: found job with result '$r'"
+              exit 1
+            fi
+          done
+          echo "All CI checks passed or were skipped."
 
   # ── NOTIFY SLACK ─────────────────────────────────────────────────────────────
   notify-failure:
