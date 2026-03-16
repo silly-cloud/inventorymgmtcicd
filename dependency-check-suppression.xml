@@ -151,4 +151,18 @@
         <vulnerabilityName regex="true">.*</vulnerabilityName>
     </suppress>
 
+    <!-- flatted@3.2.7 — locked by react-scripts@5.0.1 via eslint→file-entry-cache→flat-cache.
+         Build-time ESLint dep only; never runs in the production Docker image.
+         Backend flatted is fixed via npm overrides to ^3.4.0; frontend cannot be overridden
+         inside react-scripts' locked dependency tree. -->
+    <suppress>
+        <notes>
+            flatted DoS vulnerability — locked transitively by react-scripts@5.0.1 via
+            eslint→file-entry-cache→flat-cache. Build-time only; not deployed to production.
+            Reviewed: 2026-03-16
+        </notes>
+        <packageUrl regex="true">^pkg:npm/flatted@.*$</packageUrl>
+        <vulnerabilityName regex="true">.*</vulnerabilityName>
+    </suppress>
+
 </suppressions>
