@@ -18,7 +18,7 @@ concurrency:
 env:
   COVERAGE_THRESHOLD: "80"
   CVSS_THRESHOLD: "7"
-  DC_VERSION: "11.1.1"
+  DC_VERSION: "12.1.0"
 
 jobs:
 
@@ -455,6 +455,11 @@ jobs:
       - name: Fail if vulnerabilities exceed threshold
         if: steps.dc-run.outcome == 'failure'
         run: |
+          REPORT="dependency-check-report/dependency-check-report.json"
+          if [[ ! -f "$REPORT" ]]; then
+            echo "ERROR: Dependency-Check crashed before producing a report. Check the dc.log artifact."
+            exit 1
+          fi
           echo "Dependency-Check found vulnerabilities above CVSS threshold ${CVSS_THRESHOLD}."
           exit 1
 
