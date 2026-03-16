@@ -368,8 +368,14 @@ jobs:
           chmod +x dependency-check/bin/dependency-check.sh
 
       - name: Run Dependency-Check
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: |
           mkdir -p dependency-check-report
+          EXTRA_ARGS=""
+          if [[ -n "$NVD_API_KEY" ]]; then
+            EXTRA_ARGS="--nvdApiKey ${NVD_API_KEY}"
+          fi
           ./dependency-check/bin/dependency-check.sh \
             --project "mern-inventory" \
             --scan "Backend/node_modules" \
@@ -381,7 +387,8 @@ jobs:
             --suppression dependency-check-suppression.xml \
             --data ~/.dependency-check/data \
             --disableAssembly \
-            --log dependency-check-report/dc.log
+            --log dependency-check-report/dc.log \
+            $EXTRA_ARGS
         continue-on-error: true
         id: dc-run
 
