@@ -3,13 +3,9 @@ name: "🛡️ Security SCA"
 on:
   workflow_run:
     workflows:
-      - "🔍 Lint"
-      - "🧪 Test"
+      - "✅ CI Complete"
     types:
       - completed
-    branches:
-      - main
-      - "release/**"
 
 env:
   CVSS_THRESHOLD: "7"
@@ -17,42 +13,22 @@ env:
 
 jobs:
   gate:
-    name: Gate – Both Lint and Test Must Pass
+    name: Gate – CI Complete Must Pass
     runs-on: ubuntu-latest
     outputs:
       proceed: ${{ steps.check.outputs.proceed }}
     steps:
-      - name: Check upstream workflow results
+      - name: Check CI Complete conclusion
         id: check
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const sha = context.payload.workflow_run.head_sha;
-
-            async function getConclusion(workflowName) {
-              const runs = await github.rest.actions.listWorkflowRunsForRepo({
-                owner,
-                repo,
-                head_sha: sha,
-                per_page: 20,
-              });
-              const run = runs.data.workflow_runs.find(r => r.name === workflowName);
-              return run ? run.conclusion : null;
-            }
-
-            const lintResult = await getConclusion('🔍 Lint');
-            const testResult = await getConclusion('🧪 Test');
-
-            console.log(`Lint conclusion: ${lintResult}`);
-            console.log(`Test conclusion: ${testResult}`);
-
-            const proceed = lintResult === 'success' && testResult === 'success';
-            core.setOutput('proceed', proceed ? 'true' : 'false');
-
-            if (!proceed) {
-              core.warning(`Skipping SCA: Lint=${lintResult}, Test=${testResult}`);
-            }
+        run: |
+          conclusion="${{ github.event.workflow_run.conclusion }}"
+          echo "CI Complete conclusion: $conclusion"
+          if [ "$conclusion" != "success" ]; then
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping SCA: CI Complete did not succeed (conclusion: $conclusion)"
+            exit 1
+          fi
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
 
   dependency-check:
     name: OWASP Dependency-Check

@@ -1,0 +1,70 @@
+name: "✅ CI Complete"
+
+# Fan-in coordinator: fires once for each upstream completion (Lint or Test).
+# concurrency cancel-in-progress ensures that if both complete simultaneously,
+# only the latest run (which sees both done) proceeds.
+# When one upstream hasn't finished yet, this workflow fails fast — the second
+# trigger will find both complete and succeed, unblocking SCA.
+
+on:
+  workflow_run:
+    workflows:
+      - "🔍 Lint"
+      - "🧪 Test"
+    types: [completed]
+    branches:
+      - main
+      - "release/**"
+
+concurrency:
+  group: ci-complete-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: true
+
+jobs:
+  fan-in:
+    name: Gate — Lint and Test must both pass
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check both workflow conclusions
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const sha = context.payload.workflow_run.head_sha;
+
+            const { data } = await github.rest.actions.listWorkflowRunsForRepo({
+              owner, repo, head_sha: sha, per_page: 50,
+            });
+
+            function latest(name) {
+              return data.workflow_runs
+                .filter(r => r.name === name)
+                .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))[0];
+            }
+
+            const lint = latest('🔍 Lint');
+            const test = latest('🧪 Test');
+
+            const lintDone    = lint?.status === 'completed';
+            const testDone    = test?.status === 'completed';
+            const lintPassed  = lint?.conclusion === 'success';
+            const testPassed  = test?.conclusion === 'success';
+
+            core.info(`Lint : ${lint?.status  ?? 'not found'} / ${lint?.conclusion  ?? '-'}`);
+            core.info(`Test : ${test?.status  ?? 'not found'} / ${test?.conclusion  ?? '-'}`);
+
+            if (!lintDone || !testDone) {
+              core.setFailed(
+                'One upstream workflow has not yet completed — the other trigger will handle it.'
+              );
+              return;
+            }
+
+            if (!lintPassed || !testPassed) {
+              core.setFailed(
+                `CI failed — Lint: ${lint.conclusion}, Test: ${test.conclusion}`
+              );
+              return;
+            }
+
+            core.info('Both Lint and Test passed ✅');
